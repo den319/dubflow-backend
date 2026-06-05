@@ -1,6 +1,7 @@
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, String, ForeignKey, DateTime, Integer
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 
 from app.models.base import Base, UUIDMixin
 
@@ -57,6 +58,12 @@ class SubtitleFile(Base, UUIDMixin):
         String,
         nullable=False,
         default="uploaded",
+    )
+
+    entries = relationship(
+        "SubtitleEntry",
+        back_populates="subtitle_file",
+        cascade="all, delete-orphan",
     )
 
     created_at = Column(

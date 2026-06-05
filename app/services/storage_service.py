@@ -11,8 +11,9 @@ def save_subtitle_file(file: UploadFile):
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
     extension = file.filename.split(".")[-1]
+    filename= file.filename.split(".")[0]
 
-    unique_filename = f"{uuid.uuid4()}.{extension}"
+    unique_filename = f"{filename}-{uuid.uuid4()}.{extension}"
 
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
 
@@ -23,4 +24,5 @@ def save_subtitle_file(file: UploadFile):
         "original_filename": file.filename,
         "stored_filename": unique_filename,
         "file_path": file_path,
+        "extension": extension,
     }

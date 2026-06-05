@@ -7,6 +7,8 @@ def parse_srt_file(file_path: str):
     parsed_entries = []
 
     for subtitle in subtitles:
+        print("subtitle: ", subtitle)
+        
         parsed_entries.append(
             {
                 "sequence_number": subtitle.index,

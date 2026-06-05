@@ -5,6 +5,9 @@ from app.models.subtitle_entry import SubtitleEntry
 
 from app.services.storage_service import save_subtitle_file
 from app.utils.subtitle_parser import parse_srt_file
+from app.services.translation.translation_service import (
+    translate_subtitle_entries,
+)
 
 
 def upload_subtitle_service(
@@ -17,6 +20,8 @@ def upload_subtitle_service(
     # Save physical file
     saved_file = save_subtitle_file(file)
 
+    print("saved file: ", saved_file)
+
     # Parse subtitles
     parsed_entries = parse_srt_file(
         saved_file["file_path"]
@@ -25,10 +30,11 @@ def upload_subtitle_service(
     # Create subtitle file record
     subtitle_file = SubtitleFile(
         project_id=project_id,
-        file_type="srt",
+        file_type=saved_file["extension"],
         source_language=source_language,
         target_language=target_language,
         original_file_path=saved_file["file_path"],
+        translated_file_path=saved_file["stored_filename"],
         total_entries=len(parsed_entries),
         translated_entries=0,
         status="uploaded",
@@ -57,4 +63,14 @@ def upload_subtitle_service(
 
     db.commit()
 
-    return subtitle_file
+    translation_result = translate_subtitle_entries(
+        db=db,
+        subtitle_file_id=subtitle_file.id,
+        source_language=source_language,
+        target_language=target_language,
+    )
+
+    return {
+        "subtitle_file": subtitle_file,
+        "translated_file_path": translation_result["translated_file_path"],
+    }

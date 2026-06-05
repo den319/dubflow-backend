@@ -6,6 +6,8 @@ def seed_subtitle_files(db, projects):
         SubtitleFile(
             project_id=projects[0].id,
             file_type="srt",
+            source_language="en",
+            target_language="hi",
             original_file_path="uploads/subtitles/moneyheist.srt",
             translated_file_path=None,
             status="uploaded",
@@ -13,6 +15,8 @@ def seed_subtitle_files(db, projects):
         SubtitleFile(
             project_id=projects[1].id,
             file_type="srt",
+            source_language="en",
+            target_language="es",
             original_file_path="uploads/subtitles/narcos.srt",
             translated_file_path="uploads/subtitles/narcos_es.srt",
             status="translated",

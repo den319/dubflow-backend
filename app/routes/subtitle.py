@@ -12,10 +12,12 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.models.project import Project
 
 from app.services.subtitle_service import (
     upload_subtitle_service,
 )
+from fastapi.responses import FileResponse
 
 router = APIRouter(
     prefix="/subtitles",
@@ -31,14 +33,13 @@ def upload_subtitle(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    # Validate extension
     if not file.filename.endswith(".srt"):
         raise HTTPException(
             status_code=400,
             detail="Only .srt files are allowed",
         )
 
-    subtitle_file = upload_subtitle_service(
+    result = upload_subtitle_service(
         db=db,
         project_id=project_id,
         source_language=source_language,
@@ -46,8 +47,10 @@ def upload_subtitle(
         file=file,
     )
 
-    return {
-        "message": "Subtitle uploaded successfully",
-        "subtitle_file_id": subtitle_file.id,
-        "total_entries": subtitle_file.total_entries,
-    }
+    translated_file_path = result["translated_file_path"]
+
+    return FileResponse(
+        path=translated_file_path,
+        media_type="application/octet-stream",
+        filename="translated.srt",
+    )
