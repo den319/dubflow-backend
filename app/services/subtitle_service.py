@@ -20,7 +20,7 @@ def upload_subtitle_service(
     # Save physical file
     saved_file = save_subtitle_file(file)
 
-    print("saved file: ", saved_file)
+    # print("saved file: ", saved_file)
 
     # Parse subtitles
     parsed_entries = parse_srt_file(

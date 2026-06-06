@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.routes import health, auth, subtitle, translation
+from app.routes import health, auth, subtitle
 
 app = FastAPI(title=settings.APP_NAME)
 
@@ -19,7 +19,6 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(subtitle.router)
-app.include_router(translation.router)
 
 
 @app.on_event("startup")
