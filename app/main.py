@@ -1,12 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
 from app.core.config import settings
 from app.core.database import engine
+from app.core.ratelimit import limiter
 from app.models.base import Base
 from app.routes import health, auth, subtitle
 import app.models  # noqa: F401 - ensure all models are loaded
 
 app = FastAPI(title=settings.APP_NAME)
+
+# Rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(429, _rate_limit_exceeded_handler)
 
 # CORS middleware — required for cookies to work with frontend
 app.add_middleware(
