@@ -6,7 +6,7 @@ from app.models.subtitle_entry import SubtitleEntry
 from app.models.subtitle_file import SubtitleFile
 
 from app.services.translation.providers.google_translate import (
-    translate_text,
+    translate_multiple_texts,
 )
 
 from app.services.generators.srt_generator import (
@@ -29,19 +29,26 @@ def translate_subtitle_entries(
         .all()
     )
 
-    translated_count = 0
+    if not entries:
+        return {
+            "translated_entries": 0,
+            "translated_file_path": None,
+        }
 
-    for entry in entries:
-        translated_text = translate_text(
-            text=entry.original_text,
-            source_language=source_language,
-            target_language=target_language,
-        )
+    # Collect all original texts for batch translation
+    original_texts = [entry.original_text for entry in entries]
 
+    # Translate all texts in a single API call
+    translated_texts = translate_multiple_texts(
+        texts=original_texts,
+        source_language=source_language,
+        target_language=target_language,
+    )
+
+    # Assign translated texts back to entries
+    for entry, translated_text in zip(entries, translated_texts):
         entry.translated_text = translated_text
         entry.translation_status = "completed"
-
-        translated_count += 1
 
     db.commit()
 
@@ -66,6 +73,6 @@ def translate_subtitle_entries(
     db.commit()
 
     return {
-        "translated_entries": translated_count,
+        "translated_entries": len(entries),
         "translated_file_path": translated_file_path,
     }
