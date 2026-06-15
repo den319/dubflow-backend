@@ -34,15 +34,13 @@ def upload_subtitle_service(
         source_language=source_language,
         target_language=target_language,
         original_file_path=saved_file["file_path"],
-        translated_file_path=saved_file["stored_filename"],
         total_entries=len(parsed_entries),
         translated_entries=0,
         status="uploaded",
     )
 
     db.add(subtitle_file)
-    db.commit()
-    db.refresh(subtitle_file)
+    db.flush()
 
     subtitle_entries = []
 

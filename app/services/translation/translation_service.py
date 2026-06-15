@@ -45,12 +45,17 @@ def translate_subtitle_entries(
         target_language=target_language,
     )
 
-    # Assign translated texts back to entries
-    for entry, translated_text in zip(entries, translated_texts):
-        entry.translated_text = translated_text
-        entry.translation_status = "completed"
+    # Bulk update all entries in a single DB operation
+    update_data = [
+        {
+            "id": entry.id,
+            "translated_text": translated_text,
+            "translation_status": "completed",
+        }
+        for entry, translated_text in zip(entries, translated_texts)
+    ]
 
-    db.commit()
+    db.bulk_update_mappings(SubtitleEntry, update_data)
 
     # Generate translated SRT
     output_filename = f"{uuid.uuid4()}.srt"
