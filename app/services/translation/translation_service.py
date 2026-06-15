@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.subtitle_entry import SubtitleEntry
 from app.models.subtitle_file import SubtitleFile
 
-from app.services.translation.providers.libre_translate import (
+from app.services.translation.providers.google_translate import (
     translate_text,
 )
 

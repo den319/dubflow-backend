@@ -6,7 +6,7 @@ load_dotenv()
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "Dubflow Backend"
+    APP_NAME: str = os.getenv("APP_NAME", "Backend_Application")
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/dubflow")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "secret")
