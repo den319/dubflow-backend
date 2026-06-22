@@ -63,7 +63,14 @@ def get_current_user(
         detail="Not authenticated",
     )
 
+    # Try to get token from cookie first (browser/web flow)
     token = request.cookies.get("access_token")
+
+    # Fallback to Authorization: Bearer header (API client flow)
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[len("Bearer "):]
 
     if not token:
         raise credentials_exception

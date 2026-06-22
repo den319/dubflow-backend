@@ -10,7 +10,8 @@ class Project(Base, UUIDMixin):
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    original_file_name = Column(String, nullable=False)
+    name = Column(String, nullable=False, default="Untitled Project")
+    original_file_name = Column(String, nullable=True)
     source_language = Column(String, nullable=False)
     target_language = Column(String, nullable=False)
 
