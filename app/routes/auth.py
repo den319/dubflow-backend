@@ -55,13 +55,16 @@ def login(
         data={"sub": user.email}
     )
 
-    is_production = settings.ENVIRONMENT == "production"
+    # Only set Secure when the connection is actually HTTPS.
+    # Browsers silently drop Secure cookies on plain HTTP,
+    # which broke /me on production (EC2 served over HTTP).
+    is_secure = request.url.scheme == "https"
 
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=is_production,
+        secure=is_secure,
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
@@ -89,13 +92,14 @@ def me(current_user=Depends(get_current_user)):
 
 
 @router.post("/logout")
-def logout(response: Response):
-    is_production = settings.ENVIRONMENT == "production"
+def logout(request: Request, response: Response):
+    # Match the same protocol-adaptive Secure flag used on login.
+    is_secure = request.url.scheme == "https"
 
     response.delete_cookie(
         key="access_token",
         httponly=True,
-        secure=is_production,
+        secure=is_secure,
         samesite="lax",
     )
 
