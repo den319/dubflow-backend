@@ -14,10 +14,11 @@ def test_register_user(client):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["email"] == "test_register@example.com"
-    assert data["username"] == "testuser"
-    assert "id" in data
-    assert "created_at" in data
+    assert data["success"] is True
+    assert data["message"] == "User registered successfully"
+    assert data["data"]["email"] == "test_register@example.com"
+    assert data["data"]["username"] == "testuser"
+    assert "id" in data["data"]
 
 
 def test_register_duplicate_email(client):
@@ -40,8 +41,10 @@ def test_register_duplicate_email(client):
             "password": "password456",
         },
     )
-    # Should fail (422 for validation error or 500 for integrity error)
-    assert response.status_code in [422, 500]
+    # Should fail (400: email already registered)
+    assert response.status_code in [400, 422, 500]
+    data = response.json()
+    assert data["success"] is False
 
 
 def test_login_success(client):
@@ -58,12 +61,14 @@ def test_login_success(client):
     # Login
     response = client.post(
         "/auth/login",
-        data={"email": "test_login@example.com", "password": "password123"},
+        json={"email": "test_login@example.com", "password": "password123"},
     )
     assert response.status_code == 200
     data = response.json()
+    assert data["success"] is True
     assert data["message"] == "Login successful"
-    assert data["token_type"] == "bearer"
+    assert data["data"]["token_type"] == "bearer"
+    assert "access_token" in data["data"]
     # Check that cookie was set
     assert "access_token" in response.cookies
 
@@ -82,19 +87,23 @@ def test_login_wrong_password(client):
     # Login with wrong password
     response = client.post(
         "/auth/login",
-        data={"email": "test_wrongpw@example.com", "password": "wrongpassword"},
+        json={"email": "test_wrongpw@example.com", "password": "wrongpassword"},
     )
     assert response.status_code == 401
-    assert "Incorrect email or password" in response.json()["detail"]
+    data = response.json()
+    assert data["success"] is False
+    assert "Invalid credentials" in data["message"]
 
 
 def test_login_nonexistent_user(client):
     """Test login with non-existent email."""
     response = client.post(
         "/auth/login",
-        data={"email": "notexist@example.com", "password": "password123"},
+        json={"email": "notexist@example.com", "password": "password123"},
     )
     assert response.status_code == 401
+    data = response.json()
+    assert data["success"] is False
 
 
 def test_get_current_user(authenticated_client):
@@ -102,15 +111,18 @@ def test_get_current_user(authenticated_client):
     response = authenticated_client.get("/auth/me")
     assert response.status_code == 200
     data = response.json()
-    assert data["email"] == "test_user@example.com"
-    assert data["username"] == "testuser"
+    assert data["success"] is True
+    assert data["data"]["email"] == "test_user@example.com"
+    assert data["data"]["username"] == "testuser"
 
 
 def test_get_current_user_without_login(client):
     """Test getting current user without authentication."""
     response = client.get("/auth/me")
     assert response.status_code == 401
-    assert "Not authenticated" in response.json()["detail"]
+    data = response.json()
+    assert data["success"] is False
+    assert "Not authenticated" in data["message"]
 
 
 def test_logout(authenticated_client):
@@ -122,7 +134,9 @@ def test_logout(authenticated_client):
     # Logout
     logout_response = authenticated_client.post("/auth/logout")
     assert logout_response.status_code == 200
-    assert logout_response.json()["message"] == "Logged out successfully"
+    data = logout_response.json()
+    assert data["success"] is True
+    assert data["message"] == "Logged out successfully"
     
     # Verify cookie is cleared
     assert "access_token" not in logout_response.cookies
@@ -146,7 +160,7 @@ def test_login_sets_httponly_cookie(client):
     # Login
     response = client.post(
         "/auth/login",
-        data={"email": "test_cookie@example.com", "password": "password123"},
+        json={"email": "test_cookie@example.com", "password": "password123"},
     )
     assert response.status_code == 200
     
@@ -155,8 +169,6 @@ def test_login_sets_httponly_cookie(client):
     assert "access_token" in cookies
     
     # Verify httponly flag is set (can't access via JavaScript)
-    # Note: TestClient cookies don't expose httponly directly, 
-    # but we can verify it's set in the response headers
     set_cookie_header = response.headers.get("set-cookie", "")
     assert "httponly" in set_cookie_header.lower()
 
@@ -206,6 +218,6 @@ def test_password_is_hashed(client, db):
     # Query user directly from database
     user = db.query(User).filter(User.email == "test_hash@example.com").first()
     assert user is not None
-    # Password should be hashed (bcrypt hashes start with $2b$)
-    assert user.hashed_password.startswith("$2b$")
+    # Password should be hashed (Argon2 hashes start with $argon2id$)
+    assert user.hashed_password.startswith("$argon2id$")
     assert user.hashed_password != "password123"

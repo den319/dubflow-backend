@@ -1,321 +1,568 @@
 # Dubflow Backend
 
-A FastAPI backend for subtitle translation with authentication, project management, and automatic translation. Users can upload `.srt` subtitle files, which are automatically parsed, translated, and returned as a translated file — all in a single API call.
+FastAPI backend for Dubflow — a subtitle translation + streaming content platform. Provides authentication, project management, subtitle translation, Home screen data, and content CRUD APIs.
 
 ## Tech Stack
 
 | Technology | Purpose |
 |-----------|---------|
-| **FastAPI** | Web framework — automatically generates OpenAPI docs at `/docs` |
-| **PostgreSQL** | Database — production-grade relational database (Neon) |
-| **SQLAlchemy** | ORM — maps Python classes to database tables |
-| **Alembic** | Database migrations — tracks schema changes |
-| **Argon2** | Password hashing — securely stores user passwords |
-| **JWT (python-jose)** | Token-based authentication — stateless auth via signed tokens |
-| **Pydantic** | Data validation — ensures request/response data integrity |
-| **Uvicorn** | ASGI server — runs the FastAPI application |
-| **SlowAPI** | Rate limiting — protects auth endpoints from brute force |
-
-## Project Structure
-
-```
-dubflow-backend/
-├── alembic/                        # Database migration files
-│   ├── versions/                   # Migration scripts
-│   ├── env.py                      # Alembic environment config
-│   └── script.py.mako
-├── app/
-│   ├── core/                       # Core setup
-│   │   ├── config.py               # App config from .env
-│   │   ├── database.py             # DB connection, session
-│   │   ├── ratelimit.py            # Rate limiter instance
-│   │   └── security.py             # Password hashing + JWT creation
-│   ├── models/                     # SQLAlchemy ORM models
-│   │   ├── base.py                 # DeclarativeBase + UUIDMixin
-│   │   ├── user.py                 # User model
-│   │   ├── project.py              # Project model
-│   │   ├── subtitle_file.py        # Subtitle file model
-│   │   ├── subtitle_entry.py       # Individual subtitle entry model
-│   │   ├── subscription.py         # Subscription model
-│   │   └── translation_cache.py    # Translation cache model
-│   ├── routes/                     # API endpoints
-│   │   ├── auth.py                 # Auth (register, login, me, logout)
-│   │   ├── health.py               # Health check
-│   │   ├── project.py              # Project CRUD
-│   │   └── subtitle.py             # Subtitle upload + translate
-│   ├── schemas/                    # Pydantic request/response models
-│   │   ├── user.py                 # UserCreate, UserResponse, LoginRequest
-│   │   └── project.py              # ProjectCreate, ProjectResponse
-│   ├── services/                   # Business logic layer
-│   │   ├── auth_service.py         # Auth logic + get_current_user dependency
-│   │   ├── project_service.py      # Project CRUD logic
-│   │   ├── subtitle_service.py     # Upload + parse + translate flow
-│   │   ├── storage_service.py      # File storage
-│   │   ├── generators/             # Subtitle file generators
-│   │   │   └── srt_generator.py    # SRT file generation
-│   │   └── translation/            # Translation services
-│   │       ├── translation_service.py
-│   │       └── providers/
-│   │           ├── google_translate.py
-│   │           └── libre_translate.py
-│   ├── utils/
-│   │   └── subtitle_parser.py      # SRT file parser
-│   ├── tests/                      # Unit tests
-│   │   ├── conftest.py             # Test fixtures
-│   │   ├── test_health.py
-│   │   └── test_auth.py
-│   └── main.py                     # FastAPI app entry point
-├── .env                            # Environment variables (gitignored)
-├── alembic.ini                     # Alembic config
-├── requirements.txt                # Python dependencies
-├── start.sh                        # Quick start script (runs migrations + server)
-└── README.md
-```
-
-## Prerequisites
-
-- Python 3.10+
-- PostgreSQL (or a Neon database URL)
-- `venv` (Python virtual environment)
+| **FastAPI** | Web framework — auto-generates OpenAPI docs at `/docs` |
+| **PostgreSQL** | Database (Neon) |
+| **SQLAlchemy** | ORM |
+| **Alembic** | Database migrations |
+| **Argon2** | Password hashing |
+| **JWT (python-jose)** | Token-based authentication |
+| **Pydantic** | Data validation |
+| **Uvicorn** | ASGI server |
+| **SlowAPI** | Rate limiting |
 
 ## Setup
-
-### 1. Clone and Create Virtual Environment
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-```
-
-### 2. Install Dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 3. Configure Environment
-
-Create a `.env` file in the project root:
-
+Create `.env`:
 ```env
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/dubflow_db
-SECRET_KEY=your-super-secret-key-change-this-in-production
+SECRET_KEY=your-super-secret-key
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 ENVIRONMENT=development
 ```
 
-> **Note:** The `SECRET_KEY` is used to sign JWT tokens. Generate a strong one for production (`openssl rand -hex 32`). Set `ENVIRONMENT=production` on your deployed server to enable secure cookies (HTTPS-only).
-
-### 4. Create the Database
-
-```bash
-createdb dubflow_db
-```
-
-### 5. Run Database Migrations
-
+Run:
 ```bash
 alembic upgrade head
+./start.sh          # or: uvicorn app.main:app --reload
 ```
 
-### 6. Start the Server
-
-```bash
-# Using the script (auto-runs migrations)
-./start.sh
-
-# Or directly
-uvicorn app.main:app --reload
-```
-
-The server will be available at **http://localhost:8000**
-
-## API Documentation
-
-FastAPI generates interactive API docs automatically:
-
-| URL | Description |
-|-----|-------------|
-| `/docs` | Swagger UI — test endpoints from the browser |
-| `/redoc` | ReDoc — alternative docs UI |
-| `/openapi.json` | OpenAPI spec (JSON) |
-
-## API Endpoints
-
-### Health
-
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|:---:|
-| GET | `/` | Welcome message | ❌ |
-| GET | `/health` | Health check → `{"status": "ok"}` | ❌ |
-
-### Authentication
-
-All auth endpoints are prefixed with `/auth`.
-
-| Method | Endpoint | Description | Auth Required | Rate Limit |
-|--------|----------|-------------|:---:|:---:|
-| POST | `/auth/register` | Register a new user | ❌ | 5/min |
-| POST | `/auth/login` | Login and get JWT token | ❌ | 10/min |
-| GET | `/auth/me` | Get current authenticated user | ✅ | — |
-| POST | `/auth/logout` | Clear auth cookie | ❌ | — |
+Server runs at **http://localhost:8000** — interactive docs at **/docs**.
 
 ---
 
-#### Register
+## Universal Response Format
+
+**Every JSON API response follows this structure:**
+
+```json
+{
+  "message": "Human-readable message",
+  "success": true,
+  "data": { }
+}
+```
+
+- `message` — string, describes what happened
+- `success` — boolean, `true` for success, `false` for errors
+- `data` — the actual payload (object, array, or `null`)
+
+**Error responses** (e.g. 401, 404, 400) also use this format:
+```json
+{
+  "message": "Not authenticated",
+  "success": false,
+  "data": null
+}
+```
+
+> **Note:** The subtitle upload endpoint (`/subtitles/upload-subtitle`) returns a **file download**, not JSON.
+
+---
+
+## Authentication
+
+All auth endpoints are prefixed with `/auth`.
+
+| Method | Endpoint | Description | Auth | Rate Limit |
+|--------|----------|-------------|:---:|:---:|
+| POST | `/auth/register` | Register a new user | ❌ | 5/min |
+| POST | `/auth/login` | Login, get JWT token | ❌ | 10/min |
+| GET | `/auth/me` | Get current user | ✅ | — |
+| POST | `/auth/logout` | Clear auth cookie | ❌ | — |
+
+### Register
 
 ```http
 POST /auth/register
 Content-Type: application/json
 
 {
-    "email": "user@example.com",
-    "username": "myuser",
-    "password": "securepassword"
+  "email": "user@example.com",
+  "username": "myuser",
+  "password": "securepassword"
 }
 ```
 
 **Response** `200 OK`:
 ```json
 {
+  "message": "User registered successfully",
+  "success": true,
+  "data": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "email": "user@example.com",
-    "username": "myuser"
+    "username": "myuser",
+    "avatar_url": null
+  }
 }
 ```
 
-**Error** `400 Bad Request` (duplicate email):
+**Error** `400` (duplicate email):
 ```json
-{
-    "detail": "Email already registered"
-}
+{ "message": "Email already registered", "success": false, "data": null }
 ```
 
----
-
-#### Login
+### Login
 
 ```http
 POST /auth/login
 Content-Type: application/json
 
 {
-    "email": "user@example.com",
-    "password": "securepassword"
+  "email": "user@example.com",
+  "password": "securepassword"
 }
 ```
 
 **Response** `200 OK`:
 ```json
 {
-    "message": "Login successful",
+  "message": "Login successful",
+  "success": true,
+  "data": {
     "access_token": "eyJhbGciOiJIUzI1NiIs...",
     "token_type": "bearer"
+  }
 }
 ```
 
-The JWT token is also set as an HttpOnly cookie (`access_token`) with:
-- `HttpOnly` — JavaScript cannot read it (XSS protection)
-- `SameSite=lax` — CSRF protection
-- `Max-Age` — based on `ACCESS_TOKEN_EXPIRE_MINUTES`
-- `Secure` — only in production (when `ENVIRONMENT=production`)
+The JWT is also set as an HttpOnly cookie (`access_token`) automatically.
 
----
-
-#### Get Current User
+### Get Current User
 
 ```http
 GET /auth/me
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
-Or via cookie:
-
-```http
-GET /auth/me
-Cookie: access_token=eyJhbGciOiJIUzI1NiIs...
-```
-
 **Response** `200 OK`:
 ```json
 {
+  "message": "User fetched successfully",
+  "success": true,
+  "data": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "email": "user@example.com",
-    "username": "myuser"
+    "username": "myuser",
+    "avatar_url": null
+  }
 }
 ```
 
-**Error** `401 Unauthorized`:
-```json
-{
-    "detail": "Not authenticated"
-}
-```
-
----
-
-#### Logout
+### Logout
 
 ```http
 POST /auth/logout
 ```
 
-**Response** `200 OK` (clears the `access_token` cookie):
+**Response** `200 OK`:
+```json
+{ "message": "Logged out successfully", "success": true, "data": null }
+```
+
+---
+
+## Home Screen API
+
+Returns all data needed to render the Flutter Home screen in **one request**.
+
+| Method | Endpoint | Description | Auth | Rate Limit |
+|--------|----------|-------------|:---:|:---:|
+| GET | `/home` | All home data (user, banners, movies, creators, shorts, live videos) | ✅ | 30/min |
+
+```http
+GET /home
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+**Response** `200 OK`:
 ```json
 {
-    "message": "Logged out successfully"
+  "message": "Home data fetched successfully",
+  "success": true,
+  "data": {
+    "user": {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "username": "myuser",
+      "avatar_url": null
+    },
+    "banners": [
+      {
+        "id": "uuid",
+        "title": "Trending Now",
+        "subtitle": "Watch what everyone is talking about",
+        "image_url": "https://placehold.co/1600x600?text=Trending+Now",
+        "content_type": "movie",
+        "content_id": null
+      }
+    ],
+    "popular_movies": [
+      {
+        "id": "uuid",
+        "title": "Oppenheimer",
+        "poster_url": "https://placehold.co/400x600?text=Oppenheimer",
+        "banner_url": "https://placehold.co/1600x600?text=Oppenheimer",
+        "source_language": "en",
+        "content_type": "movie",
+        "is_popular": true,
+        "is_featured": true,
+        "rating": 8.5,
+        "release_year": 2023
+      }
+    ],
+    "creators": [
+      {
+        "id": "uuid",
+        "name": "Aadi",
+        "username": "aadi",
+        "avatar_url": "https://placehold.co/200x200?text=Aadi",
+        "is_verified": true
+      }
+    ],
+    "shorts": [
+      {
+        "id": "uuid",
+        "title": "Oppenheimer Best Scene",
+        "thumbnail_url": "https://placehold.co/400x700?text=Oppenheimer+Short",
+        "creator": {
+          "id": "uuid",
+          "name": "Aadi",
+          "username": "aadi",
+          "avatar_url": "https://placehold.co/200x200?text=Aadi"
+        },
+        "language": "en",
+        "views_count": 12000
+      }
+    ],
+    "live_videos": [
+      {
+        "id": "uuid",
+        "title": "Behind the Scenes of Action!",
+        "thumbnail_url": "https://placehold.co/1200x675?text=Live+Action",
+        "creator": {
+          "id": "uuid",
+          "name": "Robert",
+          "username": "robert",
+          "avatar_url": "https://placehold.co/200x200?text=Robert"
+        },
+        "language": "en",
+        "viewer_count": 4100,
+        "is_live": true
+      }
+    ]
+  }
+}
+```
+
+**Section limits:** banners: 5, popular movies: 10, creators: 10, shorts: 10, live videos: 10.
+
+---
+
+## Content CRUD APIs
+
+All content endpoints are prefixed with `/content`. **All require authentication** (Bearer token or cookie). Rate limit: 30/min each.
+
+### Home Banners
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/content/banners` | Create a banner |
+| PUT | `/content/banners/{id}` | Update a banner |
+
+**Create Banner:**
+```http
+POST /content/banners
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "title": "Trending Now",
+  "subtitle": "Watch what everyone is talking about",
+  "image_url": "https://placehold.co/1600x600?text=Trending+Now",
+  "content_type": "movie",
+  "content_id": null,
+  "is_active": true,
+  "sort_order": 1
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Banner created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "title": "Trending Now",
+    "subtitle": "Watch what everyone is talking about",
+    "image_url": "https://placehold.co/1600x600?text=Trending+Now",
+    "content_type": "movie",
+    "content_id": null,
+    "is_active": true,
+    "sort_order": 1
+  }
+}
+```
+
+**Update Banner** (only send fields you want to change):
+```http
+PUT /content/banners/{banner_id}
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{ "title": "New Title", "sort_order": 2 }
+```
+
+**Error** `404`:
+```json
+{ "message": "Banner not found", "success": false, "data": null }
+```
+
+### Movies
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/content/movies` | Create a movie |
+| PUT | `/content/movies/{id}` | Update a movie |
+
+**Create Movie:**
+```http
+POST /content/movies
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "title": "Oppenheimer",
+  "description": "The story of J. Robert Oppenheimer.",
+  "poster_url": "https://placehold.co/400x600?text=Oppenheimer",
+  "banner_url": "https://placehold.co/1600x600?text=Oppenheimer",
+  "source_language": "en",
+  "content_type": "movie",
+  "is_popular": true,
+  "is_featured": true,
+  "rating": 8.5,
+  "release_year": 2023,
+  "sort_order": 1
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Movie created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "title": "Oppenheimer",
+    "description": "The story of J. Robert Oppenheimer.",
+    "poster_url": "https://placehold.co/400x600?text=Oppenheimer",
+    "banner_url": "https://placehold.co/1600x600?text=Oppenheimer",
+    "source_language": "en",
+    "content_type": "movie",
+    "is_popular": true,
+    "is_featured": true,
+    "rating": 8.5,
+    "release_year": 2023,
+    "sort_order": 1
+  }
+}
+```
+
+**Update Movie:**
+```http
+PUT /content/movies/{movie_id}
+Content-Type: application/json
+
+{ "title": "New Title", "rating": 9.0 }
+```
+
+### Content Creators
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/content/creators` | Create a creator |
+| PUT | `/content/creators/{id}` | Update a creator |
+
+**Create Creator:**
+```http
+POST /content/creators
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "name": "Aadi",
+  "username": "aadi",
+  "avatar_url": "https://placehold.co/200x200?text=Aadi",
+  "bio": "Movie reviewer and reactor.",
+  "is_verified": true
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Creator created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "name": "Aadi",
+    "username": "aadi",
+    "avatar_url": "https://placehold.co/200x200?text=Aadi",
+    "bio": "Movie reviewer and reactor.",
+    "is_verified": true
+  }
+}
+```
+
+### Shorts
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/content/shorts` | Create a short |
+| PUT | `/content/shorts/{id}` | Update a short |
+
+**Create Short:**
+```http
+POST /content/shorts
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "title": "Oppenheimer Best Scene",
+  "description": "The most intense scene.",
+  "thumbnail_url": "https://placehold.co/400x700?text=Short",
+  "creator_id": "uuid-of-creator",
+  "language": "en",
+  "views_count": 12000,
+  "is_published": true,
+  "sort_order": 1
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Short created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "title": "Oppenheimer Best Scene",
+    "description": "The most intense scene.",
+    "thumbnail_url": "https://placehold.co/400x700?text=Short",
+    "creator_id": "uuid-of-creator",
+    "language": "en",
+    "views_count": 12000,
+    "is_published": true,
+    "sort_order": 1
+  }
+}
+```
+
+### Live Videos
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/content/live-videos` | Create a live video |
+| PUT | `/content/live-videos/{id}` | Update a live video |
+
+**Create Live Video:**
+```http
+POST /content/live-videos
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "title": "Behind the Scenes of Action!",
+  "description": "Live set tour.",
+  "thumbnail_url": "https://placehold.co/1200x675?text=Live",
+  "creator_id": "uuid-of-creator",
+  "language": "en",
+  "viewer_count": 4100,
+  "is_live": true,
+  "started_at": "2026-08-09T12:00:00Z",
+  "sort_order": 1
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Live video created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "title": "Behind the Scenes of Action!",
+    "description": "Live set tour.",
+    "thumbnail_url": "https://placehold.co/1200x675?text=Live",
+    "creator_id": "uuid-of-creator",
+    "language": "en",
+    "viewer_count": 4100,
+    "is_live": true,
+    "started_at": "2026-08-09T12:00:00Z",
+    "sort_order": 1
+  }
 }
 ```
 
 ---
 
-### Projects
+## Projects
 
 All project endpoints are prefixed with `/projects`. **All require authentication.**
 
-| Method | Endpoint | Description | Rate Limit |
-|--------|----------|-------------|:---:|
-| POST | `/projects` | Create a new project | 30/min |
-| GET | `/projects` | List all projects for current user | — |
-| GET | `/projects/{project_id}` | Get a single project by ID | — |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/projects` | Create a project |
+| GET | `/projects` | List current user's projects |
+| GET | `/projects/{id}` | Get a single project |
 
-> **Note:** When you upload a subtitle file via `/subtitles/upload-subtitle`, a project is **automatically created** for you. You only need these endpoints if you want to create projects manually or list existing ones.
+> **Note:** Uploading a subtitle file auto-creates a project. These endpoints are for manual management.
 
----
-
-#### Create Project
-
+**Create Project:**
 ```http
 POST /projects
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 Content-Type: application/json
 
 {
-    "name": "My Video Project",
-    "source_language": "en",
-    "target_language": "es"
+  "name": "My Video Project",
+  "source_language": "en",
+  "target_language": "es"
 }
 ```
 
-**Response** `201 Created`:
+**Response** `200 OK`:
 ```json
 {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
+  "message": "Project created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
     "name": "My Video Project",
     "original_file_name": null,
     "source_language": "en",
     "target_language": "es",
     "status": "pending",
-    "created_at": "2026-07-15T12:00:00Z",
+    "created_at": "2026-08-09T12:00:00Z",
     "updated_at": null
+  }
 }
 ```
 
----
-
-#### List Projects
-
+**List Projects:**
 ```http
 GET /projects
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
@@ -323,66 +570,33 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 
 **Response** `200 OK`:
 ```json
-[
+{
+  "message": "Projects fetched successfully",
+  "success": true,
+  "data": [
     {
-        "id": "550e8400-e29b-41d4-a716-446655440000",
-        "name": "My Video Project",
-        "original_file_name": "demo-srt-file.srt",
-        "source_language": "en",
-        "target_language": "es",
-        "status": "completed",
-        "created_at": "2026-07-15T12:00:00Z",
-        "updated_at": "2026-07-15T12:05:00Z"
+      "id": "uuid",
+      "name": "My Video Project",
+      "original_file_name": "demo.srt",
+      "source_language": "en",
+      "target_language": "es",
+      "status": "completed",
+      "created_at": "2026-08-09T12:00:00Z",
+      "updated_at": "2026-08-09T12:05:00Z"
     }
-]
-```
-
----
-
-#### Get Project by ID
-
-```http
-GET /projects/550e8400-e29b-41d4-a716-446655440000
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
-```
-
-**Response** `200 OK`:
-```json
-{
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "My Video Project",
-    "original_file_name": "demo-srt-file.srt",
-    "source_language": "en",
-    "target_language": "es",
-    "status": "completed",
-    "created_at": "2026-07-15T12:00:00Z",
-    "updated_at": "2026-07-15T12:05:00Z"
-}
-```
-
-**Error** `404 Not Found`:
-```json
-{
-    "detail": "Project not found"
+  ]
 }
 ```
 
 ---
 
-### Subtitles
-
-All subtitle endpoints are prefixed with `/subtitles`. **All require authentication.**
+## Subtitles
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/subtitles/upload-subtitle` | Upload SRT file → auto-create project → translate → download |
+| POST | `/subtitles/upload-subtitle` | Upload SRT → auto-create project → translate → download |
 
----
-
-#### Upload and Translate Subtitle
-
-This is the **main endpoint** of the application. It accepts an SRT file, automatically creates a project, parses the subtitles, translates them, and returns the translated file — all in a single request.
-
+**Upload & Translate:**
 ```http
 POST /subtitles/upload-subtitle
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
@@ -393,300 +607,148 @@ target_language: es
 file: @demo-srt-file.srt
 ```
 
-**Form Fields:**
+**Response:** Translated `.srt` file download (`application/octet-stream`).
 
-| Field | Type | Required | Description |
-|-------|------|:--------:|-------------|
-| `source_language` | string | ✅ | Source language code (e.g., `en`, `es`, `hi`) |
-| `target_language` | string | ✅ | Target language code (e.g., `es`, `hi`, `fr`) |
-| `file` | file | ✅ | The `.srt` subtitle file to upload |
-
-**Response:** The translated `.srt` file is returned as a file download (`application/octet-stream`).
-
-**Error** `400 Bad Request`:
+**Error** `400`:
 ```json
-{
-    "detail": "Only .srt files are allowed"
-}
-```
-
-**Error** `401 Unauthorized`:
-```json
-{
-    "detail": "Not authenticated"
-}
+{ "message": "Only .srt files are allowed", "success": false, "data": null }
 ```
 
 ---
 
-## Authentication Flow
+## Frontend Integration Flow
 
-### Two Ways to Authenticate
-
-The API supports two authentication methods:
-
-1. **Cookie-based (browser/web apps):** After login, the JWT is stored in an HttpOnly cookie. The browser automatically sends it with every request.
-
-2. **Bearer Token (API clients like Postman, mobile apps):** After login, copy the `access_token` from the response and include it in the `Authorization` header.
-
-```
-                    REGISTER                    LOGIN
-                    ─────────                   ─────
-Client                      Server     Client                    Server
-  │                           │         │                         │
-  │ POST /auth/register      │         │ POST /auth/login        │
-  │ {email, username, pw}    │         │ {email, password}       │
-  │─────────────────────────>│         │────────────────────────>│
-  │                           │         │                         │
-  │                   1. Hash password │                 1. Find user
-  │                   2. Save to DB    │                 2. Verify password
-  │                   3. Return user   │                 3. Create JWT
-  │                           │         │                 4. Set HttpOnly cookie
-  │ {id, email, username}    │         │                         │
-  │<─────────────────────────│         │ ← Set-Cookie: access_token=...
-  │                           │         │ {message, access_token, token_type}
-  │                           │         │<────────────────────────│
-
-
-              AUTHENTICATED REQUEST (Cookie — Browser)
-              ────────────────────────────────────────
-Client                          Server
-  │                               │
-  │ GET /auth/me                  │
-  │ Cookie: access_token=eyJ...   │
-  │──────────────────────────────>│
-  │                               │
-  │                   1. Read token from cookie
-  │                   2. Decode & verify JWT signature
-  │                   3. Check expiration
-  │                   4. Extract email from "sub" claim
-  │                   5. Look up user in DB
-  │                               │
-  │ {id, email, username}         │
-  │<──────────────────────────────│
-
-
-              AUTHENTICATED REQUEST (Bearer Token — API Client)
-              ─────────────────────────────────────────────────
-Client                          Server
-  │                               │
-  │ POST /subtitles/upload-subtitle
-  │ Authorization: Bearer eyJ...  │
-  │──────────────────────────────>│
-  │                               │
-  │                   1. Read token from Authorization header
-  │                   2. Decode & verify JWT signature
-  │                   3. Check expiration
-  │                   4. Extract email from "sub" claim
-  │                   5. Look up user in DB
-  │                               │
-  │ Translated .srt file          │
-  │<──────────────────────────────│
+### 1. Register
+```dart
+final response = await http.post(
+  Uri.parse('$baseUrl/auth/register'),
+  headers: {'Content-Type': 'application/json'},
+  body: jsonEncode({
+    'email': email,
+    'username': username,
+    'password': password,
+  }),
+);
+final data = jsonDecode(response.body);
+// data["success"] == true → registration successful
+// data["data"]["id"] → user id
 ```
 
----
-
-## Complete Integration Flow (Frontend)
-
-Here's the typical flow for a frontend application:
-
+### 2. Login
+```dart
+final response = await http.post(
+  Uri.parse('$baseUrl/auth/login'),
+  headers: {'Content-Type': 'application/json'},
+  body: jsonEncode({'email': email, 'password': password}),
+);
+final data = jsonDecode(response.body);
+// data["success"] == true → login successful
+// data["data"]["access_token"] → store this token
+// Send it as: Authorization: Bearer <token>
 ```
-1. User registers
-   POST /auth/register → { id, email, username }
 
-2. User logs in
-   POST /auth/login → { access_token, token_type }
-   → Store the access_token in localStorage/sessionStorage
-   → (Cookie is also set automatically for browser requests)
+### 3. Fetch Home Screen
+```dart
+final response = await http.get(
+  Uri.parse('$baseUrl/home'),
+  headers: {'Authorization': 'Bearer $token'},
+);
+final data = jsonDecode(response.body);
+// data["data"]["user"] → welcome header
+// data["data"]["banners"] → carousel
+// data["data"]["popular_movies"] → movie rows
+// data["data"]["creators"] → follow creators row
+// data["data"]["shorts"] → shorts section
+// data["data"]["live_videos"] → live section
+```
 
-3. User uploads a subtitle file
-   POST /subtitles/upload-subtitle
-   Authorization: Bearer <access_token>
-   Form: source_language=en, target_language=es, file=subtitles.srt
-   → Returns translated .srt file as download
+### 4. Create/Update Content (Admin)
+```dart
+// Create a movie
+final response = await http.post(
+  Uri.parse('$baseUrl/content/movies'),
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer $token',
+  },
+  body: jsonEncode({
+    'title': 'Oppenheimer',
+    'source_language': 'en',
+    'content_type': 'movie',
+    'is_popular': true,
+    'rating': 8.5,
+    'release_year': 2023,
+  }),
+);
 
-4. (Optional) User views their projects
-   GET /projects
-   Authorization: Bearer <access_token>
-   → Returns list of all projects with their status
+// Update a movie
+final response = await http.put(
+  Uri.parse('$baseUrl/content/movies/$movieId'),
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer $token',
+  },
+  body: jsonEncode({'title': 'New Title', 'rating': 9.0}),
+);
+```
+
+### 5. Upload Subtitle
+```dart
+final request = http.MultipartRequest(
+  'POST',
+  Uri.parse('$baseUrl/subtitles/upload-subtitle'),
+);
+request.headers['Authorization'] = 'Bearer $token';
+request.fields['source_language'] = 'en';
+request.fields['target_language'] = 'es';
+request.files.add(await http.MultipartFile.fromPath('file', srtFilePath));
+final response = await request.send();
+// Returns translated .srt file as download
 ```
 
 ---
 
 ## Rate Limiting
 
-The API uses **SlowAPI** for rate limiting to prevent abuse:
-
 | Endpoint | Limit |
 |----------|-------|
-| `POST /auth/register` | 5 requests per minute per IP |
-| `POST /auth/login` | 10 requests per minute per IP |
-| `POST /projects` | 30 requests per minute per IP |
+| `POST /auth/register` | 5/min per IP |
+| `POST /auth/login` | 10/min per IP |
+| `POST /projects` | 30/min per IP |
+| `GET /home` | 30/min per IP |
+| All `/content/*` | 30/min per IP |
 
-When a rate limit is exceeded, the API returns:
-
+Rate limit exceeded → `429`:
 ```json
-{
-    "detail": "Rate limit exceeded"
-}
+{ "message": "Rate limit exceeded", "success": false, "data": null }
 ```
-
-Status code: `429 Too Many Requests`
-
----
-
-## Database Models
-
-### User (`users` table)
-| Column | Type | Constraints |
-|--------|------|-------------|
-| id | UUID (PK) | Auto-generated, unique |
-| email | String | Unique, indexed, NOT NULL |
-| username | String | Unique, indexed, NOT NULL |
-| hashed_password | String | NOT NULL |
-| is_active | Boolean | Default: true |
-| created_at | DateTime (tz) | Auto-set |
-| updated_at | DateTime (tz) | Auto-updated |
-
-### Project (`projects` table)
-| Column | Type | Constraints |
-|--------|------|-------------|
-| id | UUID (PK) | Auto-generated, unique |
-| user_id | UUID (FK → users.id) | NOT NULL, indexed, CASCADE delete |
-| name | String | NOT NULL |
-| original_file_name | String | Nullable |
-| source_language | String | NOT NULL |
-| target_language | String | NOT NULL |
-| status | String | Default: "pending" |
-| created_at | DateTime (tz) | Auto-set |
-| updated_at | DateTime (tz) | Auto-updated |
-
-### SubtitleFile (`subtitle_files` table)
-| Column | Type | Constraints |
-|--------|------|-------------|
-| id | UUID (PK) | Auto-generated, unique |
-| project_id | UUID (FK → projects.id) | NOT NULL, indexed, CASCADE delete |
-| file_type | String | NOT NULL |
-| source_language | String | NOT NULL |
-| target_language | String | NOT NULL |
-| original_file_path | String | NOT NULL |
-| translated_file_path | String | Nullable |
-| total_entries | Integer | NOT NULL |
-| translated_entries | Integer | NOT NULL |
-| status | String | NOT NULL |
-| created_at | DateTime (tz) | Auto-set |
-| updated_at | DateTime (tz) | Auto-updated |
-
-### SubtitleEntry (`subtitle_entries` table)
-| Column | Type | Constraints |
-|--------|------|-------------|
-| id | UUID (PK) | Auto-generated, unique |
-| subtitle_file_id | UUID (FK → subtitle_files.id) | NOT NULL, indexed, CASCADE delete |
-| sequence_number | Integer | NOT NULL |
-| start_time | String | NOT NULL |
-| end_time | String | NOT NULL |
-| original_text | Text | NOT NULL |
-| translated_text | Text | Nullable |
-| translation_status | String | NOT NULL |
-| error_message | Text | Nullable |
-| created_at | DateTime (tz) | Auto-set |
-| updated_at | DateTime (tz) | Auto-updated |
-
-### Subscription (`subscriptions` table)
-| Column | Type | Constraints |
-|--------|------|-------------|
-| id | UUID (PK) | Auto-generated, unique |
-| user_id | UUID (FK → users.id) | NOT NULL, indexed, CASCADE delete |
-| plan_type | String | NOT NULL |
-| payment_provider | String | Nullable |
-| provider_customer_id | String | Nullable |
-| provider_subscription_id | String | Nullable |
-| status | String | NOT NULL |
-| created_at | DateTime (tz) | Auto-set |
-| updated_at | DateTime (tz) | Auto-updated |
-
-### TranslationCache (`translation_cache` table)
-| Column | Type | Constraints |
-|--------|------|-------------|
-| id | UUID (PK) | Auto-generated, unique |
-| source_text | Text | NOT NULL, indexed |
-| source_language | String | NOT NULL |
-| target_language | String | NOT NULL |
-| translated_text | Text | NOT NULL |
-| provider_name | String | Nullable |
-| created_at | DateTime (tz) | Auto-set |
-
----
-
-## Security
-
-- **Passwords** are hashed using **Argon2** (via `passlib`) — the most secure password hashing algorithm available
-- **JWT tokens** are signed with HMAC-SHA256 using a secret key
-- **Cookies** are `HttpOnly` (inaccessible to JavaScript) — mitigates XSS attacks
-- **SameSite=lax** — provides CSRF protection
-- **Secure flag** — enabled only in production (`ENVIRONMENT=production`)
-- **CORS** is configured to allow specific frontend origins
-- **Rate limiting** — protects auth endpoints from brute-force attacks
-- **Bearer token support** — allows API clients to authenticate without cookies
 
 ---
 
 ## Running Tests
 
-Tests use the **same PostgreSQL database** as development (with cleanup after each test).
-
 ```bash
-# Run all tests
-pytest app/tests/ -v
-
-# Run only auth tests
-pytest app/tests/test_auth.py -v
-
-# Run with short traceback
-pytest app/tests/ -v --tb=short
+./venv/bin/python -m pytest app/tests/ -v
 ```
 
-### What Gets Tested
-
-#### Auth Tests (`test_auth.py`)
-- ✅ Register a new user
-- ✅ Register with duplicate email (should fail)
-- ✅ Login with correct credentials (sets cookie)
-- ✅ Login with wrong password (should fail 401)
-- ✅ Login with non-existent user (should fail 401)
-- ✅ Get current user when authenticated
-- ✅ Get current user without auth (should fail 401)
-- ✅ Logout (clears cookie)
-- ✅ Login sets HttpOnly cookie
-- ✅ Register with invalid email (validation error 422)
-- ✅ Register with missing password (validation error 422)
-- ✅ Password is stored as hash, not plain text
+**34 tests** covering: auth (14), home (9), content CRUD (11).
 
 ---
 
 ## Common Commands
 
 ```bash
-# Activate virtual environment
-source venv/bin/activate
-
-# Run development server
-uvicorn app.main:app --reload
+# Run server
+./venv/bin/uvicorn app.main:app --reload
 
 # Run tests
-pytest app/tests/ -v
+./venv/bin/python -m pytest app/tests/ -v
 
-# Create migration after model changes
-alembic revision --autogenerate -m "description"
+# Create migration
+./venv/bin/alembic revision --autogenerate -m "description"
 
 # Apply migrations
-alembic upgrade head
+./venv/bin/alembic upgrade head
 
-# Rollback one migration
-alembic downgrade -1
-
-# Check migration status
-alembic current
-
-# Run seed data
-python3 -m app.seeds.seed
+# Seed data
+./venv/bin/python -m app.seeds.seed

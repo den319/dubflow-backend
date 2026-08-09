@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.ratelimit import limiter
+from app.core.response import success_response
 from app.core.security import create_access_token
-from app.schemas.user import UserCreate, UserResponse, LoginRequest
+from app.schemas.user import UserCreate, LoginRequest
 from app.services.auth_service import (
     create_user,
     authenticate_user,
@@ -15,14 +16,23 @@ from app.services.auth_service import (
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register")
 @limiter.limit("5/minute")
 def register(
     request: Request,
     user: UserCreate,
     db: Session = Depends(get_db),
 ):
-    return create_user(db, user)
+    db_user = create_user(db, user)
+    return success_response(
+        message="User registered successfully",
+        data={
+            "id": str(db_user.id),
+            "email": db_user.email,
+            "username": db_user.username,
+            "avatar_url": db_user.avatar_url,
+        },
+    )
 
 
 @router.post("/login")
@@ -56,16 +66,26 @@ def login(
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
-    return {
-        "message": "Login successful",
-        "access_token": access_token,
-        "token_type": "bearer",
-    }
+    return success_response(
+        message="Login successful",
+        data={
+            "access_token": access_token,
+            "token_type": "bearer",
+        },
+    )
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me")
 def me(current_user=Depends(get_current_user)):
-    return current_user
+    return success_response(
+        message="User fetched successfully",
+        data={
+            "id": str(current_user.id),
+            "email": current_user.email,
+            "username": current_user.username,
+            "avatar_url": current_user.avatar_url,
+        },
+    )
 
 
 @router.post("/logout")
@@ -79,6 +99,4 @@ def logout(response: Response):
         samesite="lax",
     )
 
-    return {
-        "message": "Logged out successfully"
-    }
+    return success_response(message="Logged out successfully")

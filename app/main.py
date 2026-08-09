@@ -1,11 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import HTTPException
 from slowapi import _rate_limit_exceeded_handler
 from app.core.config import settings
 from app.core.database import engine
 from app.core.ratelimit import limiter
 from app.models.base import Base
-from app.routes import health, auth, subtitle, project
+from app.routes import health, auth, subtitle, project, home, content
 import app.models  # noqa: F401 - ensure all models are loaded
 
 app = FastAPI(title=settings.APP_NAME)
@@ -13,6 +15,19 @@ app = FastAPI(title=settings.APP_NAME)
 # Rate limiter
 app.state.limiter = limiter
 app.add_exception_handler(429, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Return HTTP errors in the universal response format."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "message": exc.detail,
+            "success": False,
+            "data": None,
+        },
+    )
 
 # CORS middleware — required for cookies to work with frontend
 app.add_middleware(
@@ -28,6 +43,8 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(subtitle.router)
 app.include_router(project.router)
+app.include_router(home.router)
+app.include_router(content.router)
 
 
 @app.on_event("startup")

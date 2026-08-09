@@ -12,6 +12,7 @@ class UserResponse(BaseModel):
     id: UUID
     email: EmailStr
     username: str
+    avatar_url: str | None = None
 
     class Config:
         from_attributes = True
