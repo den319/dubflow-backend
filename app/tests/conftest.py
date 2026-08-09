@@ -36,10 +36,47 @@ def db():
     from app.models.content_creator import ContentCreator
     from app.models.short import Short
     from app.models.live_video import LiveVideo
+    from app.models.playback_history import PlaybackHistory
+    from app.models.content_category import ContentCategory
+    from app.models.content import Content
+    from app.models.category import Category
+    from app.models.creator_profile import CreatorProfile
+    from app.models.user_follow import UserFollow
 
     # Delete test data (users with test_ prefix email)
     # Order matters due to foreign key constraints
     try:
+        # Delete playback history for test users
+        db.query(PlaybackHistory).filter(
+            PlaybackHistory.user_id.in_(
+                db.query(User.id).filter(User.email.like("test_%"))
+            )
+        ).delete(synchronize_session=False)
+
+        # Delete follows for test users
+        db.query(UserFollow).filter(
+            UserFollow.follower_id.in_(
+                db.query(User.id).filter(User.email.like("test_%"))
+            )
+        ).delete(synchronize_session=False)
+        db.query(UserFollow).filter(
+            UserFollow.following_id.in_(
+                db.query(User.id).filter(User.email.like("test_%"))
+            )
+        ).delete(synchronize_session=False)
+
+        # Delete content-category relationships
+        db.query(ContentCategory).delete(synchronize_session=False)
+
+        # Delete content
+        db.query(Content).delete(synchronize_session=False)
+
+        # Delete categories
+        db.query(Category).delete(synchronize_session=False)
+
+        # Delete creator profiles
+        db.query(CreatorProfile).delete(synchronize_session=False)
+
         # Delete live videos and shorts (depend on content_creators)
         db.query(LiveVideo).delete(synchronize_session=False)
         db.query(Short).delete(synchronize_session=False)
@@ -105,8 +142,45 @@ def db():
         from app.models.content_creator import ContentCreator
         from app.models.short import Short
         from app.models.live_video import LiveVideo
+        from app.models.playback_history import PlaybackHistory
+        from app.models.content_category import ContentCategory
+        from app.models.content import Content
+        from app.models.category import Category
+        from app.models.creator_profile import CreatorProfile
+        from app.models.user_follow import UserFollow
 
         try:
+            # Delete playback history for test users
+            db.query(PlaybackHistory).filter(
+                PlaybackHistory.user_id.in_(
+                    db.query(User.id).filter(User.email.like("test_%"))
+                )
+            ).delete(synchronize_session=False)
+
+            # Delete follows for test users
+            db.query(UserFollow).filter(
+                UserFollow.follower_id.in_(
+                    db.query(User.id).filter(User.email.like("test_%"))
+                )
+            ).delete(synchronize_session=False)
+            db.query(UserFollow).filter(
+                UserFollow.following_id.in_(
+                    db.query(User.id).filter(User.email.like("test_%"))
+                )
+            ).delete(synchronize_session=False)
+
+            # Delete content-category relationships
+            db.query(ContentCategory).delete(synchronize_session=False)
+
+            # Delete content
+            db.query(Content).delete(synchronize_session=False)
+
+            # Delete categories
+            db.query(Category).delete(synchronize_session=False)
+
+            # Delete creator profiles
+            db.query(CreatorProfile).delete(synchronize_session=False)
+
             # Delete live videos and shorts (depend on content_creators)
             db.query(LiveVideo).delete(synchronize_session=False)
             db.query(Short).delete(synchronize_session=False)

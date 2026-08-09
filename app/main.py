@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.core.database import engine
 from app.core.ratelimit import limiter
 from app.models.base import Base
-from app.routes import health, auth, subtitle, project, home, content
+from app.routes import health, auth, subtitle, project, home, content, explore, explore_crud
 import app.models  # noqa: F401 - ensure all models are loaded
 
 app = FastAPI(title=settings.APP_NAME)
@@ -45,6 +45,8 @@ app.include_router(subtitle.router)
 app.include_router(project.router)
 app.include_router(home.router)
 app.include_router(content.router)
+app.include_router(explore.router)
+app.include_router(explore_crud.router)
 
 
 @app.on_event("startup")

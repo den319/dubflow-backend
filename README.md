@@ -271,6 +271,350 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 
 ---
 
+## Explore API
+
+Returns all data needed to render the Flutter **Explore screen** in **one request**. Explore queries reusable domain tables (Content, Category, CreatorProfile, UserFollow, PlaybackHistory) rather than UI-specific tables.
+
+| Method | Endpoint | Description | Auth | Rate Limit |
+|--------|----------|-------------|:---:|:---:|
+| GET | `/explore` | All explore sections (featured, categories, content, trending_now, top_artists, recently_played) | Optional | 30/min |
+
+> **Auth is optional.** Without a token, `following` and `recently_played` return `[]`. With a token, they reflect the current user's follows & playback history.
+
+```http
+GET /explore
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Explore data fetched successfully",
+  "success": true,
+  "data": {
+    "featured": [
+      {
+        "id": "uuid",
+        "title": "Learn Python in 10 Minutes",
+        "description": "A quick Python tutorial for beginners.",
+        "content_type": "video",
+        "thumbnail_url": "https://placehold.co/400x700?text=Python+Tutorial",
+        "banner_url": "https://placehold.co/1600x600?text=Learning",
+        "creator": {
+          "id": "uuid",
+          "username": "sara",
+          "display_name": "Sara",
+          "avatar_url": "https://placehold.co/200x200?text=Sara",
+          "is_verified": true
+        },
+        "view_count": 45000,
+        "like_count": 5200,
+        "duration_seconds": 600,
+        "created_at": "2026-08-09T19:58:24.903733+05:30"
+      }
+    ],
+    "categories": [
+      { "id": "uuid", "name": "Trend", "slug": "trend", "icon_url": "https://..." },
+      { "id": "uuid", "name": "Music", "slug": "music", "icon_url": "https://..." },
+      { "id": "uuid", "name": "Gaming", "slug": "gaming", "icon_url": "https://..." },
+      { "id": "uuid", "name": "Learning", "slug": "learning", "icon_url": "https://..." }
+    ],
+    "content": {
+      "recent": [ /* ContentResponse[] */ ],
+      "following": [ /* ContentResponse[] — empty if not authenticated */ ],
+      "trendy": [ /* ContentResponse[] */ ],
+      "learning": [ /* ContentResponse[] */ ]
+    },
+    "trending_now": [ /* ContentResponse[] */ ],
+    "top_artists": [
+      {
+        "id": "uuid",
+        "username": "sara",
+        "display_name": "Sara",
+        "avatar_url": "https://placehold.co/200x200?text=Sara",
+        "is_verified": true,
+        "follower_count": 21000
+      }
+    ],
+    "recently_played": [ /* ContentResponse[] — empty if not authenticated */ ]
+  }
+}
+```
+
+**Section limits (configurable):** featured: 5, recent: 10, following: 10, trendy: 10, learning: 10, trending_now: 10, top_artists: 10, recently_played: 10.
+
+> Each `featured`/`content`/`trending_now`/`recently_played` item uses the **ContentResponse** shape above (id, title, description, content_type, thumbnail_url, banner_url, creator, view_count, like_count, duration_seconds, created_at). No passwords or sensitive user fields are ever returned.
+
+---
+
+## Explore CRUD APIs
+
+All explore CRUD endpoints are prefixed with `/explore`. **All require authentication** (Bearer token or cookie). Rate limit: 30/min each.
+
+These endpoints let a frontend admin/manage content, categories, creators, follows, and playback history.
+
+### Categories
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/explore/categories` | Create a category |
+| PUT | `/explore/categories/{id}` | Update a category |
+
+**Create Category:**
+```http
+POST /explore/categories
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "name": "Animation",
+  "slug": "animation",
+  "description": "Animated content",
+  "icon_url": "https://placehold.co/100x100?text=Animation"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Category created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "name": "Animation",
+    "slug": "animation",
+    "description": "Animated content",
+    "icon_url": "https://placehold.co/100x100?text=Animation"
+  }
+}
+```
+
+**Update Category** (only send fields to change):
+```http
+PUT /explore/categories/{category_id}
+Content-Type: application/json
+
+{ "name": "Animation & Cartoons", "description": "Updated description" }
+```
+
+### Creator Profiles
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/explore/creators` | Create a creator profile (links a `users` row) |
+| PUT | `/explore/creators/{id}` | Update a creator profile |
+
+**Create Creator Profile:**
+```http
+POST /explore/creators
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "user_id": "uuid-of-existing-user",
+  "display_name": "Aadi",
+  "bio": "Movie reviewer and reactor.",
+  "avatar_url": "https://placehold.co/200x200?text=Aadi",
+  "is_verified": true,
+  "follower_count": 12500
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Creator profile created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "user_id": "uuid-of-user",
+    "display_name": "Aadi",
+    "bio": "Movie reviewer and reactor.",
+    "avatar_url": "https://placehold.co/200x200?text=Aadi",
+    "is_verified": true,
+    "follower_count": 12500
+  }
+}
+```
+
+**Update Creator Profile:**
+```http
+PUT /explore/creators/{profile_id}
+Content-Type: application/json
+
+{ "display_name": "Aadi Official", "is_verified": true }
+```
+
+### Content
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/explore/content` | Create a content item |
+| PUT | `/explore/content/{id}` | Update a content item |
+
+**Create Content:**
+```http
+POST /explore/content
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "creator_id": "uuid-of-creator-profile",
+  "title": "My New Video",
+  "description": "A test video",
+  "content_type": "video",
+  "thumbnail_url": "https://placehold.co/400x700?text=New",
+  "banner_url": "https://placehold.co/1600x600?text=New",
+  "status": "published",
+  "visibility": "public",
+  "duration_seconds": 120,
+  "view_count": 0,
+  "like_count": 0,
+  "is_featured": false
+}
+```
+
+> **content_type** values: `movie` | `short` | `video` | `live`
+> **status** values: `draft` | `published` | `archived`
+> **visibility** values: `public` | `private` | `unlisted`
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Content created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "creator_id": "uuid-of-creator-profile",
+    "title": "My New Video",
+    "description": "A test video",
+    "content_type": "video",
+    "thumbnail_url": "https://placehold.co/400x700?text=New",
+    "banner_url": "https://placehold.co/1600x600?text=New",
+    "status": "published",
+    "visibility": "public",
+    "duration_seconds": 120,
+    "view_count": 0,
+    "like_count": 0,
+    "is_featured": false
+  }
+}
+```
+
+**Update Content:**
+```http
+PUT /explore/content/{content_id}
+Content-Type: application/json
+
+{ "title": "New Title", "view_count": 100, "like_count": 20 }
+```
+
+### Content ↔ Category Association
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/explore/content-categories` | Attach a category to a content item |
+
+```http
+POST /explore/content-categories
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "content_id": "uuid-of-content",
+  "category_id": "uuid-of-category"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Content category association created successfully",
+  "success": true,
+  "data": {
+    "content_id": "uuid-of-content",
+    "category_id": "uuid-of-category"
+  }
+}
+```
+
+> **Error** `400` (duplicate): `{ "message": "Content already in this category", "success": false, "data": null }`
+
+### Follows
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/explore/follows` | Follow a user |
+| PUT | `/explore/follows/{id}` | Update a follow relationship |
+
+**Create Follow:**
+```http
+POST /explore/follows
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "follower_id": "uuid-of-current-user",
+  "following_id": "uuid-of-user-to-follow"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Follow relationship created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "follower_id": "uuid-of-current-user",
+    "following_id": "uuid-of-user-to-follow"
+  }
+}
+```
+
+> **Error** `400` (self-follow): `{ "message": "Cannot follow yourself", "success": false, "data": null }`
+> **Error** `400` (duplicate): `{ "message": "Already following this user", "success": false, "data": null }`
+
+### Playback History
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/explore/playback-history` | Record/update playback (upsert — no duplicate rows) |
+| PUT | `/explore/playback-history/{id}` | Update a playback record |
+
+**Record Playback:**
+```http
+POST /explore/playback-history
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+Content-Type: application/json
+
+{
+  "user_id": "uuid-of-user",
+  "content_id": "uuid-of-content",
+  "progress_seconds": 45,
+  "completed": false
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "message": "Playback history created successfully",
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "user_id": "uuid-of-user",
+    "content_id": "uuid-of-content",
+    "progress_seconds": 45,
+    "completed": false
+  }
+}
+```
+
+> **Upsert behavior:** calling POST again with the same `user_id` + `content_id` updates the existing record instead of creating a duplicate — perfect for "recently played" tracking.
+
+---
+
 ## Content CRUD APIs
 
 All content endpoints are prefixed with `/content`. **All require authentication** (Bearer token or cookie). Rate limit: 30/min each.
@@ -662,7 +1006,110 @@ final data = jsonDecode(response.body);
 // data["data"]["live_videos"] → live section
 ```
 
-### 4. Create/Update Content (Admin)
+### 4. Fetch Explore Screen
+```dart
+// Auth is optional. For a logged-in user (so following & recently_played populate):
+final response = await http.get(
+  Uri.parse('$baseUrl/explore'),
+  headers: {'Authorization': 'Bearer $token'},
+);
+final data = jsonDecode(response.body)["data"];
+
+// data["featured"] → hero carousel (ContentResponse[])
+// data["categories"] → filter chip row (CategoryResponse[])
+//   - each: { id, name, slug, icon_url }
+// data["content"]["recent"] → recent section (ContentResponse[])
+// data["content"]["following"] → following section (ContentResponse[])
+// data["content"]["trendy"] → trendy section (ContentResponse[])
+// data["content"]["learning"] → learning section (ContentResponse[])
+// data["trending_now"] → trending now row (ContentResponse[])
+// data["top_artists"] → top artists row (TopArtistResponse[])
+//   - each: { id, username, display_name, avatar_url, is_verified, follower_count }
+// data["recently_played"] → recently played (ContentResponse[])
+
+// Every ContentResponse item looks like:
+// {
+//   "id": "...",
+//   "title": "...",
+//   "description": "...",
+//   "content_type": "video",        // movie | short | video | live
+//   "thumbnail_url": "...",
+//   "banner_url": "...",
+//   "creator": {
+//     "id": "...",
+//     "username": "...",
+//     "display_name": "...",
+//     "avatar_url": "...",
+//     "is_verified": true
+//   },
+//   "view_count": 45000,
+//   "like_count": 5200,
+//   "duration_seconds": 600,
+//   "created_at": "2026-08-09T19:58:24.903733+05:30"
+// }
+```
+
+### 5. Explore CRUD (Admin / User Actions)
+```dart
+// Create a category
+final resp = await http.post(
+  Uri.parse('$baseUrl/explore/categories'),
+  headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+  body: jsonEncode({
+    'name': 'Animation',
+    'slug': 'animation',
+    'description': 'Animated content',
+    'icon_url': 'https://placehold.co/100x100?text=Animation',
+  }),
+);
+
+// Create a content item (points to a creator profile)
+final resp = await http.post(
+  Uri.parse('$baseUrl/explore/content'),
+  headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+  body: jsonEncode({
+    'creator_id': creatorProfileId,
+    'title': 'My New Video',
+    'content_type': 'video',
+    'thumbnail_url': 'https://...',
+    'status': 'published',
+    'visibility': 'public',
+    'duration_seconds': 120,
+    'is_featured': false,
+  }),
+);
+
+// Update content (only send fields to change)
+final resp = await http.put(
+  Uri.parse('$baseUrl/explore/content/$contentId'),
+  headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+  body: jsonEncode({'title': 'New Title', 'view_count': 100}),
+);
+
+// Follow a user (e.g. from creator profile page)
+final resp = await http.post(
+  Uri.parse('$baseUrl/explore/follows'),
+  headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+  body: jsonEncode({
+    'follower_id': currentUserId,
+    'following_id': creatorUserId,
+  }),
+);
+
+// Record playback progress (upserts — no duplicate rows)
+final resp = await http.post(
+  Uri.parse('$baseUrl/explore/playback-history'),
+  headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+  body: jsonEncode({
+    'user_id': currentUserId,
+    'content_id': contentId,
+    'progress_seconds': 45,
+    'completed': false,
+  }),
+);
+```
+
+### 6. Create/Update Content (Admin)
 ```dart
 // Create a movie
 final response = await http.post(
@@ -692,7 +1139,7 @@ final response = await http.put(
 );
 ```
 
-### 5. Upload Subtitle
+### 7. Upload Subtitle
 ```dart
 final request = http.MultipartRequest(
   'POST',
@@ -717,6 +1164,8 @@ final response = await request.send();
 | `POST /projects` | 30/min per IP |
 | `GET /home` | 30/min per IP |
 | All `/content/*` | 30/min per IP |
+| `GET /explore` | 30/min per IP |
+| All `/explore/*` CRUD | 30/min per IP |
 
 Rate limit exceeded → `429`:
 ```json
@@ -731,7 +1180,7 @@ Rate limit exceeded → `429`:
 ./venv/bin/python -m pytest app/tests/ -v
 ```
 
-**34 tests** covering: auth (14), home (9), content CRUD (11).
+**59 tests** covering: auth (14), home (9), content CRUD (11), explore read (13), explore CRUD (12).
 
 ---
 

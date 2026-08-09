@@ -5,6 +5,7 @@ from app.seeds.projects_seed import seed_projects
 from app.seeds.subtitle_files_seed import seed_subtitle_files
 from app.seeds.subtitle_entries_seed import seed_subtitle_entries
 from app.seeds.home_seed import seed_home_data
+from app.seeds.explore_seed import seed_explore_data
 
 
 def run_seed():
@@ -25,6 +26,9 @@ def run_seed():
 
         print("Seeding home data...")
         seed_home_data(db)
+
+        print("Seeding explore data...")
+        seed_explore_data(db)
 
         print("Database seeded successfully.")
 

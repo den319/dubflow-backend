@@ -3,20 +3,30 @@ from app.core.security import hash_password
 
 
 def seed_users(db):
-    users = [
-        User(
-            email="john@example.com",
-            username="john",
-            hashed_password=hash_password("password123"),
-        ),
-        User(
-            email="alice@example.com",
-            username="alice",
-            hashed_password=hash_password("password123"),
-        ),
+    user_defs = [
+        {
+            "email": "john@example.com",
+            "username": "john",
+            "password": "password123",
+        },
+        {
+            "email": "alice@example.com",
+            "username": "alice",
+            "password": "password123",
+        },
     ]
 
-    db.add_all(users)
+    users = []
+    for ud in user_defs:
+        u = db.query(User).filter(User.email == ud["email"]).first()
+        if not u:
+            u = User(
+                email=ud["email"],
+                username=ud["username"],
+                hashed_password=hash_password(ud["password"]),
+            )
+            db.add(u)
+        users.append(u)
     db.commit()
 
     return users
